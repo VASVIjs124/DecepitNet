@@ -1,0 +1,184 @@
+groups:
+  - name: deceptinet_honeypots
+    interval: 30s
+    rules:
+      # =====================================================================
+      # HONEYPOT AVAILABILITY ALERTS
+      # =====================================================================
+      - alert: HoneypotDown
+        expr: up{job=~"cowrie-honeypots|dionaea-honeypots"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          component: honeypot
+        annotations:
+          summary: "Honeypot {{ $labels.kubernetes_pod_name }} is down"
+          description: "Honeypot {{ $labels.kubernetes_pod_name }} in namespace {{ $labels.kubernetes_namespace }} has been down for more than 5 minutes."
+
+      - alert: HoneypotHighErrorRate
+        expr: rate(honeypot_errors_total[5m]) > 10
+        for: 10m
+        labels:
+          severity: warning
+          component: honeypot
+        annotations:
+          summary: "High error rate on honeypot {{ $labels.app }}"
+          description: "Honeypot {{ $labels.app }} is experiencing {{ $value }} errors per second."
+
+      # =====================================================================
+      # ATTACK DETECTION ALERTS
+      # =====================================================================
+      - alert: HighVolumeAttack
+        expr: rate(honeypot_connections_total[1m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+          component: detection
+        annotations:
+          summary: "High volume of connections detected"
+          description: "Honeypot {{ $labels.app }} is receiving {{ $value }} connections per second, possible DDoS or scanning activity."
+
+      - alert: CriticalThreatDetected
+        expr: honeypot_threat_level{level="critical"} > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: detection
+        annotations:
+          summary: "Critical threat detected on {{ $labels.app }}"
+          description: "Critical level threat activity detected from {{ $labels.source_ip }}."
+
+      - alert: MalwareDownloadDetected
+        expr: increase(dionaea_malware_downloads_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: malware
+        annotations:
+          summary: "Malware download detected"
+          description: "Dionaea honeypot has captured {{ $value }} malware samples in the last 5 minutes."
+
+      - alert: BruteForceAttempt
+        expr: rate(cowrie_login_attempts_total{result="failed"}[5m]) > 50
+        for: 5m
+        labels:
+          severity: high
+          component: detection
+        annotations:
+          summary: "Brute force attack detected"
+          description: "{{ $value }} failed login attempts per second from {{ $labels.source_ip }}."
+
+      # =====================================================================
+      # SYSTEM RESOURCE ALERTS
+      # =====================================================================
+      - alert: HoneypotHighCPU
+        expr: rate(container_cpu_usage_seconds_total{pod=~"cowrie.*|dionaea.*"}[5m]) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          component: resources
+        annotations:
+          summary: "High CPU usage on honeypot {{ $labels.pod }}"
+          description: "CPU usage is {{ $value | humanizePercentage }} on {{ $labels.pod }}."
+
+      - alert: HoneypotHighMemory
+        expr: container_memory_working_set_bytes{pod=~"cowrie.*|dionaea.*"} / container_spec_memory_limit_bytes > 0.85
+        for: 10m
+        labels:
+          severity: warning
+          component: resources
+        annotations:
+          summary: "High memory usage on honeypot {{ $labels.pod }}"
+          description: "Memory usage is {{ $value | humanizePercentage }} on {{ $labels.pod }}."
+
+      # =====================================================================
+      # DATA PIPELINE ALERTS
+      # =====================================================================
+      - alert: LogstashDown
+        expr: up{job="logstash"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          component: pipeline
+        annotations:
+          summary: "Logstash is down"
+          description: "Logstash has been down for more than 5 minutes. Honeypot logs may not be processed."
+
+      - alert: ElasticsearchDown
+        expr: up{job="elasticsearch"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          component: storage
+        annotations:
+          summary: "Elasticsearch is down"
+          description: "Elasticsearch has been down for more than 5 minutes."
+
+      - alert: KafkaLag
+        expr: kafka_consumergroup_lag > 10000
+        for: 15m
+        labels:
+          severity: warning
+          component: pipeline
+        annotations:
+          summary: "High Kafka consumer lag"
+          description: "Kafka consumer group {{ $labels.consumergroup }} has a lag of {{ $value }} messages."
+
+      # =====================================================================
+      # STORAGE ALERTS
+      # =====================================================================
+      - alert: MalwareStorageNearFull
+        expr: (kubelet_volume_stats_used_bytes{persistentvolumeclaim=~".*-binaries-pvc"} / kubelet_volume_stats_capacity_bytes) > 0.8
+        for: 30m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "Malware storage nearly full"
+          description: "Malware storage volume {{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full."
+
+      - alert: LogStorageNearFull
+        expr: (kubelet_volume_stats_used_bytes{persistentvolumeclaim=~".*-logs-pvc"} / kubelet_volume_stats_capacity_bytes) > 0.85
+        for: 30m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "Log storage nearly full"
+          description: "Log storage volume is {{ $value | humanizePercentage }} full."
+
+  # =======================================================================
+  # ML/AI COMPONENT ALERTS
+  # =======================================================================
+  - name: deceptinet_ml
+    interval: 60s
+    rules:
+      - alert: MLModelPredictionLatencyHigh
+        expr: histogram_quantile(0.99, rate(ml_model_prediction_duration_seconds_bucket[5m])) > 1
+        for: 10m
+        labels:
+          severity: warning
+          component: ml
+        annotations:
+          summary: "High ML model prediction latency"
+          description: "99th percentile prediction latency is {{ $value }}s for model {{ $labels.model_name }}."
+
+      - alert: MLModelAccuracyDegraded
+        expr: ml_model_accuracy < 0.75
+        for: 1h
+        labels:
+          severity: warning
+          component: ml
+        annotations:
+          summary: "ML model accuracy degraded"
+          description: "Model {{ $labels.model_name }} accuracy has dropped to {{ $value }}. Consider retraining."
+
+      - alert: RLAgentRewardDecreasing
+        expr: rate(rl_agent_cumulative_reward[1h]) < 0
+        for: 2h
+        labels:
+          severity: info
+          component: rl
+        annotations:
+          summary: "RL agent reward decreasing"
+          description: "Reinforcement learning agent {{ $labels.agent_name }} is showing negative reward trend."

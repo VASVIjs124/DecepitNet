@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# DECEPTINET specific
+data/
+logs/
+dumps/
+cache/
+reports/
+*.db
+*.sqlite
+*.log
+
+# Models
+models/*.pkl
+models/*.h5
+models/*.pth
+
+# Configuration (if contains secrets)
+config.local.yaml
+.env
+
+# OS
+.DS_Store
+Thumbs.db

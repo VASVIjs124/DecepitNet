@@ -1,0 +1,324 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cowrie-config
+  namespace: deceptinet-honeypots
+data:
+  cowrie.cfg: |
+    [honeypot]
+    hostname = srv01
+    log_path = /cowrie/var/log/cowrie
+    download_path = /cowrie/var/lib/cowrie/downloads
+    contents_path = /cowrie/honeyfs
+    filesystem_file = /cowrie/etc/cowrie/honeyfs.pickle
+    data_path = /cowrie/var/lib/cowrie
+    state_path = /cowrie/var/lib/cowrie
+    tty_log_path = /cowrie/var/lib/cowrie/tty
+    share_path = share/cowrie
+    txtcmds_path = /cowrie/txtcmds
+    backend = shell
+    timezone = UTC
+    arch = linux-x64-lsb
+
+    [shell]
+    enabled = true
+    processes = /cowrie/etc/cowrie/processes.pickle
+    arch = linux-x64-lsb
+
+    [ssh]
+    enabled = true
+    rsa_public_key = /cowrie/etc/cowrie/ssh_host_rsa_key.pub
+    rsa_private_key = /cowrie/etc/cowrie/ssh_host_rsa_key
+    dsa_public_key = /cowrie/etc/cowrie/ssh_host_dsa_key.pub
+    dsa_private_key = /cowrie/etc/cowrie/ssh_host_dsa_key
+    ecdsa_public_key = /cowrie/etc/cowrie/ssh_host_ecdsa_key.pub
+    ecdsa_private_key = /cowrie/etc/cowrie/ssh_host_ecdsa_key
+    ed25519_public_key = /cowrie/etc/cowrie/ssh_host_ed25519_key.pub
+    ed25519_private_key = /cowrie/etc/cowrie/ssh_host_ed25519_key
+    version = SSH-2.0-OpenSSH_6.0p1 Debian-4+deb7u2
+    listen_endpoints = tcp:2222:interface=0.0.0.0
+    sftp_enabled = true
+    forwarding = true
+    forward_redirect = false
+    
+    [telnet]
+    enabled = true
+    listen_endpoints = tcp:2223:interface=0.0.0.0
+    reported_port = 23
+
+    [output_jsonlog]
+    enabled = true
+    logfile = /cowrie/var/log/cowrie/cowrie.json
+    epoch_timestamp = false
+
+    [output_elasticsearch]
+    enabled = false
+
+    [output_splunklegacy]
+    enabled = false
+
+    [database_jsonlog]
+    enabled = true
+
+    [database_mysql]
+    enabled = false
+
+    [database_sqlite]
+    enabled = false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cowrie-userdb
+  namespace: deceptinet-honeypots
+data:
+  userdb.txt: |
+    # Format: username:password:uid:gid
+    root:!root:0:0
+    root:!123456:0:0
+    root:x:0:0
+    root:12345:0:0
+    root:123456:0:0
+    root:password:0:0
+    root:admin:0:0
+    admin:admin:0:0
+    admin:password:0:0
+    pi:raspberry:1000:1000
+    admin:12345:0:0
+    admin:123456:0:0
+    ubnt:ubnt:1000:1000
+    user:user:1000:1000
+    test:test:1000:1000
+    oracle:oracle:1000:1000
+    guest:guest:1000:1000
+    support:support:1000:1000
+    service:service:1000:1000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cowrie
+  namespace: deceptinet-honeypots
+  labels:
+    app: cowrie
+    component: honeypot
+    honeypot-type: ssh-telnet
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: cowrie
+  template:
+    metadata:
+      labels:
+        app: cowrie
+        component: honeypot
+        honeypot-type: ssh-telnet
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9000"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      
+      containers:
+      # Main Cowrie container
+      - name: cowrie
+        image: cowrie/cowrie:latest
+        imagePullPolicy: Always
+        
+        ports:
+        - name: ssh
+          containerPort: 2222
+          protocol: TCP
+        - name: telnet
+          containerPort: 2223
+          protocol: TCP
+        - name: metrics
+          containerPort: 9000
+          protocol: TCP
+        
+        env:
+        - name: COWRIE_LOG_PATH
+          value: /cowrie/var/log/cowrie
+        - name: COWRIE_DOWNLOAD_PATH
+          value: /cowrie/var/lib/cowrie/downloads
+        - name: COWRIE_JSON_LOG
+          value: /cowrie/var/log/cowrie/cowrie.json
+        
+        volumeMounts:
+        - name: cowrie-config
+          mountPath: /cowrie/etc/cowrie/cowrie.cfg
+          subPath: cowrie.cfg
+        - name: cowrie-userdb
+          mountPath: /cowrie/etc/cowrie/userdb.txt
+          subPath: userdb.txt
+        - name: cowrie-logs
+          mountPath: /cowrie/var/log/cowrie
+        - name: cowrie-downloads
+          mountPath: /cowrie/var/lib/cowrie/downloads
+        
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        
+        livenessProbe:
+          tcpSocket:
+            port: 2222
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          tcpSocket:
+            port: 2222
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+      # Filebeat sidecar for log shipping
+      - name: filebeat
+        image: docker.elastic.co/beats/filebeat:8.11.0
+        args: [
+          "-c", "/etc/filebeat.yml",
+          "-e",
+        ]
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        
+        volumeMounts:
+        - name: filebeat-config
+          mountPath: /etc/filebeat.yml
+          subPath: filebeat.yml
+        - name: cowrie-logs
+          mountPath: /var/log/cowrie
+          readOnly: true
+        - name: filebeat-data
+          mountPath: /usr/share/filebeat/data
+        
+        resources:
+          requests:
+            cpu: 50m
+            memory: 100Mi
+          limits:
+            cpu: 200m
+            memory: 200Mi
+        
+        securityContext:
+          runAsUser: 0  # Filebeat needs root to read logs
+      
+      volumes:
+      - name: cowrie-config
+        configMap:
+          name: cowrie-config
+      - name: cowrie-userdb
+        configMap:
+          name: cowrie-userdb
+      - name: cowrie-logs
+        emptyDir: {}
+      - name: cowrie-downloads
+        persistentVolumeClaim:
+          claimName: cowrie-downloads-pvc
+      - name: filebeat-config
+        configMap:
+          name: filebeat-config
+      - name: filebeat-data
+        emptyDir: {}
+      
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cowrie
+  namespace: deceptinet-honeypots
+  labels:
+    app: cowrie
+    component: honeypot
+spec:
+  type: LoadBalancer
+  selector:
+    app: cowrie
+  ports:
+  - name: ssh
+    port: 22
+    targetPort: 2222
+    protocol: TCP
+  - name: telnet
+    port: 23
+    targetPort: 2223
+    protocol: TCP
+  - name: metrics
+    port: 9000
+    targetPort: 9000
+    protocol: TCP
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cowrie-downloads-pvc
+  namespace: deceptinet-honeypots
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: standard
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: filebeat-config
+  namespace: deceptinet-honeypots
+data:
+  filebeat.yml: |
+    filebeat.inputs:
+    - type: log
+      enabled: true
+      paths:
+        - /var/log/cowrie/cowrie.json
+      json.keys_under_root: true
+      json.add_error_key: true
+      fields:
+        type: cowrie
+        honeypot_type: ssh
+        pod_name: ${POD_NAME}
+        pod_namespace: ${POD_NAMESPACE}
+        node_name: ${NODE_NAME}
+      fields_under_root: true
+      tags: ["honeypot", "cowrie", "ssh", "kubernetes"]
+    
+    processors:
+    - add_kubernetes_metadata:
+        host: ${NODE_NAME}
+        matchers:
+        - logs_path:
+            logs_path: "/var/log/cowrie/"
+    
+    output.logstash:
+      hosts: ["logstash.deceptinet.svc.cluster.local:5044"]
+      worker: 1
+      bulk_max_size: 1024
+    
+    logging.level: info

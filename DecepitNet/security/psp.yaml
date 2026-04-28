@@ -1,0 +1,151 @@
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: deceptinet-restricted
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: 'runtime/default'
+    apparmor.security.beta.kubernetes.io/allowedProfileNames: 'runtime/default'
+spec:
+  privileged: false
+  allowPrivilegeEscalation: false
+  
+  requiredDropCapabilities:
+    - ALL
+  
+  allowedCapabilities: []
+  
+  volumes:
+    - 'configMap'
+    - 'emptyDir'
+    - 'projected'
+    - 'secret'
+    - 'downwardAPI'
+    - 'persistentVolumeClaim'
+  
+  hostNetwork: false
+  hostIPC: false
+  hostPID: false
+  
+  runAsUser:
+    rule: 'MustRunAsNonRoot'
+  
+  seLinux:
+    rule: 'RunAsAny'
+  
+  supplementalGroups:
+    rule: 'RunAsAny'
+  
+  fsGroup:
+    rule: 'RunAsAny'
+  
+  readOnlyRootFilesystem: false
+
+---
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: deceptinet-honeypot
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: 'runtime/default'
+spec:
+  # Honeypots need more permissions to simulate real services
+  privileged: false
+  allowPrivilegeEscalation: true
+  
+  allowedCapabilities:
+    - NET_BIND_SERVICE
+    - NET_RAW
+  
+  requiredDropCapabilities:
+    - AUDIT_WRITE
+    - CHOWN
+    - DAC_OVERRIDE
+    - FOWNER
+    - FSETID
+    - KILL
+    - MKNOD
+    - SETFCAP
+    - SETGID
+    - SETUID
+    - SYS_CHROOT
+  
+  volumes:
+    - 'configMap'
+    - 'emptyDir'
+    - 'projected'
+    - 'secret'
+    - 'downwardAPI'
+    - 'persistentVolumeClaim'
+  
+  hostNetwork: false
+  hostIPC: false
+  hostPID: false
+  
+  runAsUser:
+    rule: 'RunAsAny'
+  
+  seLinux:
+    rule: 'RunAsAny'
+  
+  supplementalGroups:
+    rule: 'RunAsAny'
+  
+  fsGroup:
+    rule: 'RunAsAny'
+  
+  readOnlyRootFilesystem: false
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: deceptinet-psp-restricted
+rules:
+  - apiGroups: ['policy']
+    resources: ['podsecuritypolicies']
+    verbs: ['use']
+    resourceNames:
+      - deceptinet-restricted
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: deceptinet-psp-restricted-binding
+roleRef:
+  kind: ClusterRole
+  name: deceptinet-psp-restricted
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+  - kind: ServiceAccount
+    name: deceptinet-ml-pipeline
+    namespace: deceptinet
+  - kind: ServiceAccount
+    name: deceptinet-admin
+    namespace: deceptinet
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: deceptinet-psp-honeypot
+rules:
+  - apiGroups: ['policy']
+    resources: ['podsecuritypolicies']
+    verbs: ['use']
+    resourceNames:
+      - deceptinet-honeypot
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: deceptinet-psp-honeypot-binding
+roleRef:
+  kind: ClusterRole
+  name: deceptinet-psp-honeypot
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: deceptinet

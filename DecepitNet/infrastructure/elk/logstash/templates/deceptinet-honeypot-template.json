@@ -1,0 +1,112 @@
+{
+  "index_patterns": ["deceptinet-honeypot-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 3,
+      "number_of_replicas": 1,
+      "refresh_interval": "5s",
+      "index.lifecycle.name": "deceptinet-ilm-policy",
+      "index.lifecycle.rollover_alias": "deceptinet-honeypot"
+    },
+    "mappings": {
+      "dynamic": "true",
+      "dynamic_templates": [
+        {
+          "strings_as_keywords": {
+            "match_mapping_type": "string",
+            "mapping": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        }
+      ],
+      "properties": {
+        "@timestamp": {
+          "type": "date"
+        },
+        "source_ip": {
+          "type": "ip"
+        },
+        "dest_ip": {
+          "type": "ip"
+        },
+        "source_port": {
+          "type": "integer"
+        },
+        "dest_port": {
+          "type": "integer"
+        },
+        "protocol": {
+          "type": "keyword"
+        },
+        "session_id": {
+          "type": "keyword"
+        },
+        "command": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "payload": {
+          "type": "text",
+          "analyzer": "standard"
+        },
+        "threat_level": {
+          "type": "keyword"
+        },
+        "threat_score": {
+          "type": "integer"
+        },
+        "mitre_tactics": {
+          "type": "keyword"
+        },
+        "mitre_techniques": {
+          "type": "keyword"
+        },
+        "geoip": {
+          "properties": {
+            "city_name": {
+              "type": "keyword"
+            },
+            "country_name": {
+              "type": "keyword"
+            },
+            "country_code2": {
+              "type": "keyword"
+            },
+            "location": {
+              "type": "geo_point"
+            },
+            "timezone": {
+              "type": "keyword"
+            }
+          }
+        },
+        "asn": {
+          "properties": {
+            "asn": {
+              "type": "long"
+            },
+            "organization_name": {
+              "type": "keyword"
+            }
+          }
+        },
+        "malware_sample": {
+          "type": "keyword"
+        },
+        "credential_username": {
+          "type": "keyword"
+        },
+        "credential_password": {
+          "type": "keyword"
+        }
+      }
+    }
+  }
+}

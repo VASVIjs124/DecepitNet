@@ -1,0 +1,141 @@
+---
+# Prometheus ServiceMonitor for monitoring DecepitNet services
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: deceptinet-monitoring
+  namespace: deceptinet
+  labels:
+    app: deceptinet
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: deception-engine
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ml-consumer-monitoring
+  namespace: deceptinet
+  labels:
+    app: deceptinet
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: ml-consumer
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+---
+# PrometheusRule for alerting
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: deceptinet-alerts
+  namespace: deceptinet
+  labels:
+    app: deceptinet
+    release: prometheus
+spec:
+  groups:
+  - name: deceptinet.rules
+    interval: 30s
+    rules:
+    # High CPU usage
+    - alert: HighCPUUsage
+      expr: |
+        rate(container_cpu_usage_seconds_total{namespace="deceptinet"}[5m]) > 0.8
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High CPU usage in {{ $labels.pod }}"
+        description: "CPU usage is above 80% for 5 minutes"
+    
+    # High Memory usage
+    - alert: HighMemoryUsage
+      expr: |
+        container_memory_usage_bytes{namespace="deceptinet"} / container_spec_memory_limit_bytes{namespace="deceptinet"} > 0.85
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High memory usage in {{ $labels.pod }}"
+        description: "Memory usage is above 85% of limit"
+    
+    # Pod restarts
+    - alert: PodRestarting
+      expr: |
+        rate(kube_pod_container_status_restarts_total{namespace="deceptinet"}[15m]) > 0
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Pod {{ $labels.pod }} is restarting"
+        description: "Pod has restarted {{ $value }} times in 15 minutes"
+    
+    # Pod not ready
+    - alert: PodNotReady
+      expr: |
+        kube_pod_status_ready{namespace="deceptinet", condition="false"} == 1
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Pod {{ $labels.pod }} is not ready"
+        description: "Pod has been in not ready state for 5 minutes"
+    
+    # HPA at max capacity
+    - alert: HPAMaxedOut
+      expr: |
+        kube_horizontalpodautoscaler_status_current_replicas{namespace="deceptinet"}
+        >= kube_horizontalpodautoscaler_spec_max_replicas{namespace="deceptinet"}
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "HPA {{ $labels.horizontalpodautoscaler }} is at max capacity"
+        description: "HPA has been at maximum replicas for 10 minutes"
+    
+    # Database connection issues
+    - alert: DatabaseConnectionPoolExhausted
+      expr: |
+        db_pool_available_connections{namespace="deceptinet"} < 2
+      for: 3m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Database connection pool exhausted"
+        description: "Less than 2 available database connections"
+    
+    # Cache hit rate too low
+    - alert: LowCacheHitRate
+      expr: |
+        rate(redis_cache_hits{namespace="deceptinet"}[5m]) 
+        / (rate(redis_cache_hits{namespace="deceptinet"}[5m]) + rate(redis_cache_misses{namespace="deceptinet"}[5m])) < 0.7
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Cache hit rate is low"
+        description: "Cache hit rate is below 70%"
+    
+    # Kafka lag
+    - alert: KafkaConsumerLag
+      expr: |
+        kafka_consumer_lag{namespace="deceptinet"} > 1000
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Kafka consumer lag is high"
+        description: "Consumer lag is above 1000 messages"

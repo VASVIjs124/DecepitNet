@@ -1,0 +1,278 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dionaea-config
+  namespace: deceptinet-honeypots
+data:
+  dionaea.cfg: |
+    [dionaea]
+    download.dir=/var/lib/dionaea/binaries/
+    modules.dir=/opt/dionaea/lib/dionaea/
+    processors.dir=/opt/dionaea/lib/dionaea/processors/
+    submit.dir=/var/lib/dionaea/queue/
+    bistreams.dir=/var/lib/dionaea/bistreams/
+    
+    [logging]
+    levels=all,-debug
+    console.enabled=false
+    file.enabled=true
+    file.filename=/var/log/dionaea/dionaea.log
+    
+    [module.logsql]
+    enabled=true
+    file.filename=/var/log/dionaea/dionaea.sqlite
+    
+    [module.http]
+    enabled=true
+    listen.addresses=0.0.0.0
+    listen.port=8080
+    
+    [module.smb]
+    enabled=true
+    listen.addresses=0.0.0.0
+    listen.port=445
+    
+    [module.ftp]
+    enabled=true
+    listen.addresses=0.0.0.0
+    listen.port=21
+    
+    [module.tftp]
+    enabled=true
+    listen.addresses=0.0.0.0
+    listen.port=69
+    
+    [module.mysql]
+    enabled=true
+    listen.addresses=0.0.0.0
+    listen.port=3306
+    
+    [module.mssql]
+    enabled=true
+    listen.addresses=0.0.0.0
+    listen.port=1433
+    
+    [module.sip]
+    enabled=true
+    listen.addresses=0.0.0.0
+    listen.port=5060
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dionaea
+  namespace: deceptinet-honeypots
+  labels:
+    app: dionaea
+    component: honeypot
+    honeypot-type: malware
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: dionaea
+  template:
+    metadata:
+      labels:
+        app: dionaea
+        component: honeypot
+        honeypot-type: malware
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9001"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      
+      containers:
+      # Main Dionaea container
+      - name: dionaea
+        image: dinotools/dionaea:latest
+        imagePullPolicy: Always
+        
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: ftp
+          containerPort: 21
+          protocol: TCP
+        - name: smb
+          containerPort: 445
+          protocol: TCP
+        - name: mysql
+          containerPort: 3306
+          protocol: TCP
+        - name: mssql
+          containerPort: 1433
+          protocol: TCP
+        - name: sip
+          containerPort: 5060
+          protocol: UDP
+        - name: tftp
+          containerPort: 69
+          protocol: UDP
+        
+        env:
+        - name: DIONAEA_LOG_DIR
+          value: /var/log/dionaea
+        - name: DIONAEA_BINARIES_DIR
+          value: /var/lib/dionaea/binaries
+        
+        volumeMounts:
+        - name: dionaea-config
+          mountPath: /opt/dionaea/etc/dionaea/dionaea.cfg
+          subPath: dionaea.cfg
+        - name: dionaea-logs
+          mountPath: /var/log/dionaea
+        - name: dionaea-binaries
+          mountPath: /var/lib/dionaea/binaries
+        
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        
+        livenessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+
+      # Filebeat sidecar
+      - name: filebeat
+        image: docker.elastic.co/beats/filebeat:8.11.0
+        args: ["-c", "/etc/filebeat.yml", "-e"]
+        
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        
+        volumeMounts:
+        - name: dionaea-filebeat-config
+          mountPath: /etc/filebeat.yml
+          subPath: filebeat.yml
+        - name: dionaea-logs
+          mountPath: /var/log/dionaea
+          readOnly: true
+        - name: filebeat-data
+          mountPath: /usr/share/filebeat/data
+        
+        resources:
+          requests:
+            cpu: 50m
+            memory: 100Mi
+          limits:
+            cpu: 200m
+            memory: 200Mi
+        
+        securityContext:
+          runAsUser: 0
+      
+      volumes:
+      - name: dionaea-config
+        configMap:
+          name: dionaea-config
+      - name: dionaea-logs
+        emptyDir: {}
+      - name: dionaea-binaries
+        persistentVolumeClaim:
+          claimName: dionaea-binaries-pvc
+      - name: dionaea-filebeat-config
+        configMap:
+          name: dionaea-filebeat-config
+      - name: filebeat-data
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dionaea
+  namespace: deceptinet-honeypots
+  labels:
+    app: dionaea
+spec:
+  type: LoadBalancer
+  selector:
+    app: dionaea
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+  - name: ftp
+    port: 21
+    targetPort: 21
+  - name: smb
+    port: 445
+    targetPort: 445
+  - name: mysql
+    port: 3306
+    targetPort: 3306
+  - name: mssql
+    port: 1433
+    targetPort: 1433
+  - name: sip
+    port: 5060
+    targetPort: 5060
+    protocol: UDP
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dionaea-binaries-pvc
+  namespace: deceptinet-honeypots
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: standard
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dionaea-filebeat-config
+  namespace: deceptinet-honeypots
+data:
+  filebeat.yml: |
+    filebeat.inputs:
+    - type: log
+      enabled: true
+      paths:
+        - /var/log/dionaea/*.log
+        - /var/log/dionaea/*.json
+      json.keys_under_root: true
+      json.add_error_key: true
+      fields:
+        type: dionaea
+        honeypot_type: malware
+        pod_name: ${POD_NAME}
+      fields_under_root: true
+      tags: ["honeypot", "dionaea", "malware", "kubernetes"]
+    
+    output.logstash:
+      hosts: ["logstash.deceptinet.svc.cluster.local:5044"]
+    
+    logging.level: info

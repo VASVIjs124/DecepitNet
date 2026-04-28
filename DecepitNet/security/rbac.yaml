@@ -1,0 +1,126 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: deceptinet-admin
+  namespace: deceptinet
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: deceptinet-admin-role
+  namespace: deceptinet
+rules:
+  - apiGroups: ["", "apps", "batch"]
+    resources:
+      - pods
+      - deployments
+      - services
+      - configmaps
+      - secrets
+      - jobs
+      - cronjobs
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  
+  - apiGroups: [""]
+    resources:
+      - pods/log
+      - pods/exec
+    verbs: ["get", "create"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: deceptinet-admin-rolebinding
+  namespace: deceptinet
+subjects:
+  - kind: ServiceAccount
+    name: deceptinet-admin
+    namespace: deceptinet
+roleRef:
+  kind: Role
+  name: deceptinet-admin-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: deceptinet-ml-pipeline
+  namespace: deceptinet
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: deceptinet-ml-pipeline-role
+  namespace: deceptinet
+rules:
+  - apiGroups: [""]
+    resources:
+      - configmaps
+      - secrets
+    verbs: ["get", "list"]
+  
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+    verbs: ["get", "list", "create"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: deceptinet-ml-pipeline-rolebinding
+  namespace: deceptinet
+subjects:
+  - kind: ServiceAccount
+    name: deceptinet-ml-pipeline
+    namespace: deceptinet
+roleRef:
+  kind: Role
+  name: deceptinet-ml-pipeline-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: deceptinet-readonly
+  namespace: deceptinet
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: deceptinet-readonly-role
+  namespace: deceptinet
+rules:
+  - apiGroups: ["", "apps"]
+    resources:
+      - pods
+      - deployments
+      - services
+      - configmaps
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: [""]
+    resources:
+      - pods/log
+    verbs: ["get"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: deceptinet-readonly-rolebinding
+  namespace: deceptinet
+subjects:
+  - kind: ServiceAccount
+    name: deceptinet-readonly
+    namespace: deceptinet
+roleRef:
+  kind: Role
+  name: deceptinet-readonly-role
+  apiGroup: rbac.authorization.k8s.io

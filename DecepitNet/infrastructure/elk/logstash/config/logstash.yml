@@ -1,0 +1,16 @@
+http.host: "0.0.0.0"
+xpack.monitoring.enabled: true
+xpack.monitoring.elasticsearch.hosts: ["http://elasticsearch:9200"]
+
+path.config: /usr/share/logstash/config
+path.data: /usr/share/logstash/data
+path.logs: /var/log/logstash
+
+# Pipeline settings
+pipeline.workers: 4
+pipeline.batch.size: 125
+pipeline.batch.delay: 50
+
+# Queue settings
+queue.type: persisted
+queue.max_bytes: 1gb

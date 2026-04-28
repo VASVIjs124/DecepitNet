@@ -1,0 +1,117 @@
+name: Security Scanning
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2 AM UTC
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  dependency-scan:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Run Snyk for Python
+        uses: snyk/actions/python@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=medium --file=requirements.txt
+      
+      - name: Run Safety Check
+        run: |
+          pip install safety
+          safety check --json > safety-report.json
+        continue-on-error: true
+      
+      - name: Upload Safety Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: safety-report
+          path: safety-report.json
+
+  container-scan:
+    name: Container Image Scanning
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Build images
+        run: |
+          docker build -f docker/Dockerfile.deception-engine -t deceptinet/deception-engine:scan .
+          docker build -f docker/Dockerfile.ml-pipeline -t deceptinet/ml-pipeline:scan .
+      
+      - name: Run Trivy on Deception Engine
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'deceptinet/deception-engine:scan'
+          format: 'sarif'
+          output: 'trivy-deception-engine.sarif'
+      
+      - name: Run Trivy on ML Pipeline
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'deceptinet/ml-pipeline:scan'
+          format: 'sarif'
+          output: 'trivy-ml-pipeline.sarif'
+      
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: '.'
+
+  secret-scan:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      
+      - name: TruffleHog Scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --debug --only-verified
+
+  sast-scan:
+    name: Static Application Security Testing
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install Bandit
+        run: pip install bandit[toml]
+      
+      - name: Run Bandit
+        run: |
+          bandit -r . -f json -o bandit-report.json || true
+      
+      - name: Upload Bandit Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: bandit-report
+          path: bandit-report.json
+      
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/secrets
+            p/python

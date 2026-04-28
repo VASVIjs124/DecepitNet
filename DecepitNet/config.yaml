@@ -1,0 +1,209 @@
+# DECEPTINET Configuration
+
+platform:
+  name: "DECEPTINET"
+  version: "1.0.0"
+  mode: "full"  # full, honeypot, redteam, analysis
+  
+network:
+  interface: "auto"  # auto-detect or specify interface
+  subnet: "192.168.1.0/24"
+  gateway: "auto"
+  
+honeypots:
+  enabled: true
+  auto_deploy: true
+  services:
+    ssh:
+      enabled: true
+      port: 2222
+      ai_enabled: true
+      credentials_file: "data/ssh_creds.json"
+    
+    http:
+      enabled: true
+      port: 8080
+      ai_enabled: true
+      templates_dir: "templates/web"
+    
+    ftp:
+      enabled: true
+      port: 2121
+      ai_enabled: false
+      
+    smtp:
+      enabled: true
+      port: 2525
+      ai_enabled: false
+      
+    smb:
+      enabled: false
+      port: 4445
+      ai_enabled: true
+      
+    mysql:
+      enabled: true
+      port: 3307
+      ai_enabled: true
+      
+  polymorphic:
+    enabled: true
+    change_interval: 3600  # seconds
+    fingerprint_randomization: true
+
+redteam:
+  enabled: true
+  simulation:
+    auto_start: false
+    intensity: "medium"  # low, medium, high, adaptive
+    target_range: "192.168.1.0/24"
+    exclude_ips: ["192.168.1.1"]
+    
+  tactics:
+    - reconnaissance
+    - scanning
+    - exploitation
+    - lateral_movement
+    - privilege_escalation
+    - persistence
+    - exfiltration
+    
+  ai_agent:
+    enabled: true
+    model: "reinforcement_learning"
+    learning_rate: 0.001
+    exploration_rate: 0.3
+
+evasion:
+  enabled: true
+  techniques:
+    traffic_obfuscation: true
+    timing_randomization: true
+    protocol_mutation: true
+    payload_encryption: true
+    anti_fingerprinting: true
+    
+  ai_driven:
+    enabled: true
+    model: "adversarial_ml"
+    adaptation_rate: 0.5
+
+intelligence:
+  threat_feeds:
+    enabled: true
+    update_interval: 3600
+    sources:
+      - "local_db"
+      - "community_feeds"
+      
+  analysis:
+    real_time: true
+    pattern_recognition: true
+    anomaly_detection: true
+    ml_classification: true
+    
+  ioc_extraction:
+    enabled: true
+    auto_blacklist: true
+
+deception:
+  layer:
+    enabled: true
+    adaptive: true
+    decoy_density: "medium"  # low, medium, high
+    
+  decoys:
+    fake_files: true
+    fake_credentials: true
+    fake_services: true
+    fake_vulnerabilities: true
+    
+  breadcrumbs:
+    enabled: true
+    density: 5  # per subnet
+
+monitoring:
+  enabled: true
+  
+  logging:
+    level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+    file: "logs/deceptinet.log"
+    max_size_mb: 100
+    backup_count: 5
+    
+  alerts:
+    enabled: true
+    channels:
+      - console
+      - file
+      - webhook
+    
+    thresholds:
+      connection_attempts: 10
+      failed_auth: 5
+      port_scans: 20
+      
+  metrics:
+    prometheus_enabled: true
+    prometheus_port: 9090
+    
+  dashboard:
+    enabled: true
+    port: 5000
+    host: "0.0.0.0"
+    auth_required: true
+
+database:
+  type: "sqlite"  # sqlite, postgresql, mongodb
+  path: "data/deceptinet.db"
+  
+  # PostgreSQL (if type: postgresql)
+  # host: "localhost"
+  # port: 5432
+  # name: "deceptinet"
+  # user: "deceptinet"
+  # password: "changeme"
+  
+  # MongoDB (if type: mongodb)
+  # uri: "mongodb://localhost:27017/"
+  # database: "deceptinet"
+
+cache:
+  enabled: true
+  type: "redis"  # redis, memory
+  host: "localhost"
+  port: 6379
+  ttl: 3600
+
+ml_models:
+  attack_predictor:
+    enabled: true
+    model_path: "models/attack_predictor.pkl"
+    retrain_interval: 86400
+    
+  anomaly_detector:
+    enabled: true
+    model_path: "models/anomaly_detector.pkl"
+    sensitivity: 0.7
+    
+  evasion_agent:
+    enabled: true
+    model_path: "models/evasion_agent.pkl"
+    update_frequency: 1000
+
+security:
+  api_key: "changeme_generate_secure_key"
+  jwt_secret: "changeme_generate_secure_secret"
+  encryption_key: "changeme_generate_secure_encryption_key"
+  
+  rate_limiting:
+    enabled: true
+    max_requests: 100
+    window_seconds: 60
+
+advanced:
+  debug_mode: false
+  verbose: false
+  performance_mode: false
+  max_workers: 10
+  timeout: 30

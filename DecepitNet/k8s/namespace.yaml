@@ -1,0 +1,9 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: deceptinet
+  labels:
+    name: deceptinet
+    environment: production
+    app: deceptinet-platform

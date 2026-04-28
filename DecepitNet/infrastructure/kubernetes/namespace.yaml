@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: deceptinet
+  labels:
+    name: deceptinet
+    environment: production
+    project: deceptinet
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: deceptinet-honeypots
+  labels:
+    name: deceptinet-honeypots
+    environment: production
+    project: deceptinet
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: deceptinet-monitoring
+  labels:
+    name: deceptinet-monitoring
+    environment: production
+    project: deceptinet

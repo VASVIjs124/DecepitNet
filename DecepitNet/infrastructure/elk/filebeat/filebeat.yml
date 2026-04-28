@@ -1,0 +1,167 @@
+###################### Filebeat Configuration ############################
+
+# ================================== Inputs ===================================
+filebeat.inputs:
+  # -------------------------------------------------------------------------
+  # COWRIE SSH Honeypot Logs
+  # -------------------------------------------------------------------------
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/deceptinet/cowrie/*.json
+      - /var/log/cowrie/*.json
+    json.keys_under_root: true
+    json.add_error_key: true
+    fields:
+      type: cowrie
+      honeypot_type: ssh
+    fields_under_root: true
+    tags: ["honeypot", "cowrie", "ssh"]
+
+  # -------------------------------------------------------------------------
+  # DIONAEA Malware Honeypot Logs
+  # -------------------------------------------------------------------------
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/deceptinet/dionaea/*.json
+      - /var/log/dionaea/*.log
+    json.keys_under_root: true
+    json.add_error_key: true
+    fields:
+      type: dionaea
+      honeypot_type: malware
+    fields_under_root: true
+    tags: ["honeypot", "dionaea", "malware"]
+
+  # -------------------------------------------------------------------------
+  # HONEYD Network Topology Simulator
+  # -------------------------------------------------------------------------
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/deceptinet/honeyd/*.log
+    fields:
+      type: honeyd
+      honeypot_type: network
+    fields_under_root: true
+    tags: ["honeypot", "honeyd"]
+
+  # -------------------------------------------------------------------------
+  # Custom Honeypots (SSH, HTTP, FTP, SMTP, MySQL)
+  # -------------------------------------------------------------------------
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/deceptinet/honeypots/*.json
+      - /var/log/deceptinet/*.log
+    json.keys_under_root: true
+    json.add_error_key: true
+    fields:
+      type: honeypot
+      honeypot_type: custom
+    fields_under_root: true
+    tags: ["honeypot", "custom"]
+
+  # -------------------------------------------------------------------------
+  # Red Team Simulation Logs
+  # -------------------------------------------------------------------------
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/deceptinet/redteam/*.json
+    json.keys_under_root: true
+    json.add_error_key: true
+    fields:
+      type: redteam
+      source: simulation
+    fields_under_root: true
+    tags: ["redteam", "simulation"]
+
+  # -------------------------------------------------------------------------
+  # Docker Container Logs
+  # -------------------------------------------------------------------------
+  - type: container
+    enabled: true
+    paths:
+      - /var/lib/docker/containers/*/*.log
+    processors:
+      - add_docker_metadata:
+          host: "unix:///var/run/docker.sock"
+      - decode_json_fields:
+          fields: ["message"]
+          target: "json"
+          overwrite_keys: true
+
+# ============================= Filebeat modules ==============================
+filebeat.config.modules:
+  path: ${path.config}/modules.d/*.yml
+  reload.enabled: false
+
+# ================================ Processors =================================
+processors:
+  # Add host metadata
+  - add_host_metadata:
+      when.not.contains.tags: forwarded
+      netinfo.enabled: true
+      geo:
+        name: host_location
+        location: "37.7749, -122.4194"  # Update with actual location
+        continent_name: North America
+        country_iso_code: US
+
+  # Add cloud metadata (if running in cloud)
+  - add_cloud_metadata: ~
+
+  # Add Kubernetes metadata (if running in K8s)
+  - add_kubernetes_metadata:
+      host: ${NODE_NAME}
+      matchers:
+        - logs_path:
+            logs_path: "/var/log/containers/"
+
+  # Drop empty events
+  - drop_event:
+      when:
+        or:
+          - equals:
+              message: ""
+          - regexp:
+              message: "^\\s*$"
+
+  # Rate limiting (prevent log flooding)
+  - rate_limit:
+      limit: "10000/m"
+      fields: ["source_ip"]
+
+# ================================= Outputs ===================================
+
+# ---------------------------- Logstash Output --------------------------------
+output.logstash:
+  hosts: ["logstash:5044"]
+  worker: 2
+  bulk_max_size: 2048
+  loadbalance: true
+  
+  # TLS configuration (enable in production)
+  # ssl.enabled: true
+  # ssl.certificate_authorities: ["/etc/pki/root/ca.pem"]
+  # ssl.certificate: "/etc/pki/client/cert.pem"
+  # ssl.key: "/etc/pki/client/cert.key"
+
+# ================================= Logging ===================================
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  name: filebeat
+  keepfiles: 7
+  permissions: 0644
+
+# ================================ Monitoring =================================
+monitoring.enabled: true
+monitoring.elasticsearch:
+  hosts: ["elasticsearch:9200"]
+
+# ============================= X-Pack Monitoring =============================
+xpack.monitoring.enabled: true

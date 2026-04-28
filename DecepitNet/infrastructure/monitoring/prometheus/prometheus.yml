@@ -1,0 +1,198 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'deceptinet-production'
+    replica: 'prometheus-01'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+# Load rules once and periodically evaluate them
+rule_files:
+  - '/etc/prometheus/alerts/*.yml'
+
+# Scrape configurations
+scrape_configs:
+  # =========================================================================
+  # PROMETHEUS SELF-MONITORING
+  # =========================================================================
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # =========================================================================
+  # KUBERNETES PODS
+  # =========================================================================
+  - job_name: 'kubernetes-pods'
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+            - deceptinet
+            - deceptinet-honeypots
+    
+    relabel_configs:
+      # Only scrape pods with prometheus.io/scrape annotation
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      
+      # Use custom port if specified
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port, __meta_kubernetes_pod_ip]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $2:$1
+        target_label: __address__
+      
+      # Use custom path if specified
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      
+      # Add pod metadata as labels
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: kubernetes_pod_name
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: replace
+        target_label: app
+      - source_labels: [__meta_kubernetes_pod_label_component]
+        action: replace
+        target_label: component
+
+  # =========================================================================
+  # COWRIE HONEYPOT METRICS
+  # =========================================================================
+  - job_name: 'cowrie-honeypots'
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+            - deceptinet-honeypots
+    
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: cowrie
+      - source_labels: [__meta_kubernetes_pod_ip]
+        action: replace
+        target_label: __address__
+        replacement: $1:9000
+
+  # =========================================================================
+  # DIONAEA HONEYPOT METRICS
+  # =========================================================================
+  - job_name: 'dionaea-honeypots'
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+            - deceptinet-honeypots
+    
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: dionaea
+      - source_labels: [__meta_kubernetes_pod_ip]
+        action: replace
+        target_label: __address__
+        replacement: $1:9001
+
+  # =========================================================================
+  # ELASTICSEARCH METRICS
+  # =========================================================================
+  - job_name: 'elasticsearch'
+    metrics_path: '/_prometheus/metrics'
+    static_configs:
+      - targets:
+          - 'elasticsearch:9200'
+    metric_relabel_configs:
+      - source_labels: [cluster]
+        target_label: elasticsearch_cluster
+
+  # =========================================================================
+  # KAFKA METRICS
+  # =========================================================================
+  - job_name: 'kafka'
+    static_configs:
+      - targets:
+          - 'kafka:9092'
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'kafka_(.+)'
+        target_label: __name__
+        replacement: '${1}'
+
+  # =========================================================================
+  # NODE EXPORTER (System Metrics)
+  # =========================================================================
+  - job_name: 'node-exporter'
+    kubernetes_sd_configs:
+      - role: node
+    
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: '(.*):10250'
+        replacement: '${1}:9100'
+        target_label: __address__
+      - source_labels: [__meta_kubernetes_node_name]
+        target_label: instance
+
+  # =========================================================================
+  # KUBE-STATE-METRICS
+  # =========================================================================
+  - job_name: 'kube-state-metrics'
+    static_configs:
+      - targets: ['kube-state-metrics.kube-system.svc.cluster.local:8080']
+
+  # =========================================================================
+  # DECEPTINET PLATFORM SERVICES
+  # =========================================================================
+  - job_name: 'deceptinet-api'
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+            - deceptinet
+    
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_component]
+        action: keep
+        regex: (api|deception-engine|ml-service|rl-agent)
+      - source_labels: [__meta_kubernetes_pod_ip]
+        action: replace
+        target_label: __address__
+        replacement: $1:8000
+
+  # =========================================================================
+  # POSTGRES EXPORTER
+  # =========================================================================
+  - job_name: 'postgres'
+    static_configs:
+      - targets:
+          - 'postgres-exporter:9187'
+
+  # =========================================================================
+  # MONGODB EXPORTER
+  # =========================================================================
+  - job_name: 'mongodb'
+    static_configs:
+      - targets:
+          - 'mongodb-exporter:9216'
+
+  # =========================================================================
+  # REDIS EXPORTER
+  # =========================================================================
+  - job_name: 'redis'
+    static_configs:
+      - targets:
+          - 'redis-exporter:9121'

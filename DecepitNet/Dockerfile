@@ -1,0 +1,65 @@
+# Main Platform Dockerfile
+# Complete DECEPTINET platform with all components
+
+FROM python:3.10-slim as builder
+
+# Set working directory
+WORKDIR /app
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --user --no-cache-dir -r requirements.txt
+
+# Production stage
+FROM python:3.10-slim
+
+# Set labels
+LABEL maintainer="DECEPTINET Team"
+LABEL description="DECEPTINET Full Platform"
+LABEL version="1.0.0"
+
+# Create non-root user
+RUN useradd -m -u 1000 -s /bin/bash deceptinet && \
+    mkdir -p /app /data /logs /models /templates /reports /dumps /cache && \
+    chown -R deceptinet:deceptinet /app /data /logs /models /templates /reports /dumps /cache
+
+# Set working directory
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Python dependencies from builder
+COPY --from=builder /root/.local /home/deceptinet/.local
+
+# Copy application code
+COPY --chown=deceptinet:deceptinet . .
+
+# Set Python path
+ENV PATH=/home/deceptinet/.local/bin:$PATH
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Switch to non-root user
+USER deceptinet
+
+# Expose ports
+EXPOSE 8000 5000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD python -c "import sys; sys.exit(0)" || exit 1
+
+# Run the main application
+CMD ["python", "main.py", "--mode", "full"]
